@@ -9,6 +9,12 @@
     "ugui",
     "ui"
   ],
+  "category": "2D",
+  "dependencies": {
+    "com.unity.2d.common": "4.0.2",
+    "com.unity.2d.animation": "5.0.2",
+    "com.unity.2d.sprite": "1.0.0"
+  },
   "author": {
     "name": "ZProject",
     "email": "jay.zhang@happyelements.com",
