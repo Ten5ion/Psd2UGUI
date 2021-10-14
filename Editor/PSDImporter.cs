@@ -11,22 +11,13 @@ using UnityEditor.U2D.Common;
 using UnityEditor.U2D.Sprites;
 using UnityEngine.Assertions;
 using UnityEngine.Experimental.U2D.Animation;
-using UnityEngine.U2D;
-using UnityEngine.U2D.Animation;
-using UnityEngine.Scripting.APIUpdating;
 using UnityEngine.UI;
 
 namespace UnityEditor.U2D.PSD
 {
-    /// <summary>
-    /// ScriptedImporter to import Photoshop files
-    /// </summary>
-    [ScriptedImporter(4, "psb")]
-    [HelpURL("https://docs.unity3d.com/Packages/com.unity.2d.psdimporter@latest")]
-    [MovedFrom("UnityEditor.Experimental.AssetImporters")]
-    public class PSDImporter : ScriptedImporter, ISpriteEditorDataProvider
+    public class PSDImporter
     {
-        class UniqueNameGenerator
+        public class UniqueNameGenerator
         {
             List<int> m_NameHash = new List<int>();
 
@@ -56,13 +47,6 @@ namespace UnityEditor.U2D.PSD
             }
         }
 
-        struct BoneGO
-        {
-            public GameObject go;
-            public int index;
-        }
-
-        [SerializeField]
         TextureImporterSettings m_TextureImporterSettings = new TextureImporterSettings() {
             mipmapEnabled = true,
             mipmapFilter = TextureImporterMipFilter.BoxFilter,
@@ -114,40 +98,26 @@ namespace UnityEditor.U2D.PSD
             wrapModeW = TextureWrapMode.Repeat,
         };
         
-        [SerializeField]
         List<SpriteMetaData> m_SpriteImportData = new List<SpriteMetaData>(); // we use index 0 for single sprite and the rest for multiple sprites
-        [SerializeField]
         List<SpriteMetaData> m_MosaicSpriteImportData = new List<SpriteMetaData>();
-        [SerializeField]
         List<SpriteMetaData> m_RigSpriteImportData = new List<SpriteMetaData>();
 
-        [SerializeField]
         List<TextureImporterPlatformSettings> m_PlatformSettings = new List<TextureImporterPlatformSettings>();
-        [SerializeField]
         bool m_MosaicLayers = true;
-        [SerializeField]
         Vector2 m_DocumentPivot = Vector2.zero;
-        [SerializeField]
         SpriteAlignment m_DocumentAlignment = SpriteAlignment.BottomCenter;
-        [SerializeField]
         bool m_ImportHiddenLayers = false;
-        [SerializeField]
         int m_ImportedTextureWidth;
-        [SerializeField]
         int m_ImportedTextureHeight;
-        [SerializeField]
         Vector2Int m_DocumentSize;
 
-        [SerializeField]
         bool m_KeepDupilcateSpriteName = false;
 
-        [SerializeField]
         SpriteCategoryList m_SpriteCategoryList = new SpriteCategoryList() {categories = new List<SpriteCategory>()};
         GameObjectCreationFactory m_GameObjectFactory = new GameObjectCreationFactory();
 
         internal SpriteCategoryList spriteCategoryList { get { return m_SpriteCategoryList; } set { m_SpriteCategoryList = value; } }
 
-        [SerializeField]
         int m_TextureActualWidth;
         internal int textureActualWidth
         {
@@ -155,7 +125,6 @@ namespace UnityEditor.U2D.PSD
             private set { m_TextureActualWidth = value; }
         }
 
-        [SerializeField]
         int m_TextureActualHeight;
         internal int textureActualHeight
         {
@@ -163,60 +132,51 @@ namespace UnityEditor.U2D.PSD
             private set { m_TextureActualHeight = value; }
         }
 
-        [SerializeField]
         string m_SpritePackingTag = "";
 
-        [SerializeField]
         bool m_ResliceFromLayer = false;
-        [SerializeField]
         bool m_CharacterMode = true;
 
-        [SerializeField]
         List<PSDLayer> m_MosaicPSDLayers = new List<PSDLayer>();
-        [SerializeField]
-        List<PSDLayer> m_RigPSDLayers = new List<PSDLayer>();
 
-        [SerializeField]
-        CharacterData m_CharacterData = new CharacterData();
+        bool m_GenerateGOHierarchy = true;
 
-        [SerializeField]
-        bool m_GenerateGOHierarchy = false;
-
-        [SerializeField]
         string m_TextureAssetName = null;
 
-        [SerializeField]
         string m_PrefabAssetName = null;
 
-        [SerializeField]
         string m_SpriteLibAssetName = null;
 
-        [SerializeField]
         SecondarySpriteTexture[] m_SecondarySpriteTextures;
 
-        /// <summary>
-        /// Implementation of ScriptedImporter.OnImportAsset
-        /// </summary>
-        /// <param name="ctx">
-        /// This argument contains all the contextual information needed to process the import
-        /// event and is also used by the custom importer to store the resulting Unity Asset.
-        /// </param>
-        public override void OnImportAsset(AssetImportContext ctx)
+        private string _gameObjectName;
+        private string _texturePath;
+
+        [MenuItem("PSDImporter/Import PSD")]
+        public static void ImportPsd() {
+            var path = EditorUtility.OpenFilePanel("导入PSD", "", "psd");
+            if (path.Length == 0) return;
+            
+            var psdImporter = new PSDImporter();
+            psdImporter.ImportPsd(path);
+        }
+        
+        public void ImportPsd(string psdPath)
         {
-            FileStream fileStream = new FileStream(ctx.assetPath, FileMode.Open, FileAccess.Read);
+            _gameObjectName = Path.GetFileNameWithoutExtension(psdPath);
+            var saveDir = Path.Combine("Assets");
+            _texturePath = Path.Combine(saveDir, $"{_gameObjectName}.png");
+            
+            FileStream fileStream = new FileStream(psdPath, FileMode.Open, FileAccess.Read);
             Document doc = null;
             try
             {
-                UnityEngine.Profiling.Profiler.BeginSample("OnImportAsset");
-
-                UnityEngine.Profiling.Profiler.BeginSample("PsdLoad");
                 doc = PaintDotNet.Data.PhotoshopFileType.PsdLoad.Load(fileStream);
-                UnityEngine.Profiling.Profiler.EndSample();
 
                 ValidatePSDLayerId(doc);
                 
                 m_DocumentSize = new Vector2Int(doc.width, doc.height);
-                bool singleSpriteMode = m_TextureImporterSettings.textureType == TextureImporterType.Sprite && m_TextureImporterSettings.spriteMode != (int)SpriteImportMode.Multiple;
+                var singleSpriteMode = m_TextureImporterSettings.textureType == TextureImporterType.Sprite && m_TextureImporterSettings.spriteMode != (int)SpriteImportMode.Multiple;
                 EnsureSingleSpriteExist();
 
                 if (m_TextureImporterSettings.textureType != TextureImporterType.Sprite ||
@@ -235,7 +195,7 @@ namespace UnityEditor.U2D.PSD
                         {
                             spriteImportData.Add(new SpriteMetaData());
                         }
-                        spriteImportData[0].name = System.IO.Path.GetFileNameWithoutExtension(ctx.assetPath) + "_1";
+                        spriteImportData[0].name = System.IO.Path.GetFileNameWithoutExtension(psdPath) + "_1";
                         spriteImportData[0].alignment = (SpriteAlignment)m_TextureImporterSettings.spriteAlignment;
                         spriteImportData[0].border = m_TextureImporterSettings.spriteBorder;
                         spriteImportData[0].pivot = m_TextureImporterSettings.spritePivot;
@@ -247,8 +207,8 @@ namespace UnityEditor.U2D.PSD
                         }
                         textureActualWidth = doc.width;
                         textureActualHeight = doc.height;
-                        var output = ImportTexture(ctx, image, doc.width, doc.height, spriteIndexStart, spriteCount);
-                        RegisterAssets(ctx, output);
+                        var output = ImportTexture(image, doc.width, doc.height, spriteIndexStart, spriteCount);
+                        RegisterAssets(output);
                     }
                     finally
                     {
@@ -257,7 +217,7 @@ namespace UnityEditor.U2D.PSD
                 }
                 else
                 {
-                    ImportFromLayers(ctx, doc);
+                    ImportFromLayers(doc);
                 }
             }
             finally
@@ -265,13 +225,7 @@ namespace UnityEditor.U2D.PSD
                 fileStream.Close();
                 if (doc != null)
                     doc.Dispose();
-                UnityEngine.Profiling.Profiler.EndSample();
-                EditorUtility.SetDirty(this);
             }
-
-
-            // Debug Profiler.
-            // UnityEngine.Profiling.Memory.Experimental.MemoryProfiler.TakeSnapshot("snapshot.snap", MemorySnapshotFinish, CaptureFlags.ManagedObjects | CaptureFlags.NativeObjects | CaptureFlags.NativeAllocations | CaptureFlags.NativeStackTraces);
         }
 
         static void ValidatePSDLayerId(List<BitmapLayer> layers, UniqueNameGenerator uniqueNameGenerator)
@@ -304,19 +258,20 @@ namespace UnityEditor.U2D.PSD
             ValidatePSDLayerId(doc.Layers, uniqueNameGenerator);
         }
         
-        TextureGenerationOutput ImportTexture(AssetImportContext ctx, NativeArray<Color32> imageData, int textureWidth, int textureHeight, int spriteStart, int spriteCount)
+        TextureGenerationOutput ImportTexture(NativeArray<Color32> imageData, int textureWidth, int textureHeight, int spriteStart, int spriteCount)
         {
             if (!imageData.IsCreated || imageData.Length == 0)
                 return new TextureGenerationOutput();
             
             UnityEngine.Profiling.Profiler.BeginSample("ImportTexture");
-            var platformSettings = GetPlatformTextureSettings(ctx.selectedBuildTarget);
+            var platformSettings = GetPlatformTextureSettings(EditorUserBuildSettings.activeBuildTarget);
 
             var textureSettings = m_TextureImporterSettings.ExtractTextureSettings();
-            textureSettings.assetPath = ctx.assetPath;
+            textureSettings.assetPath = _texturePath;
             textureSettings.enablePostProcessor = true;
             textureSettings.containsAlpha = true;
             textureSettings.hdr = false;
+            textureSettings.readable = true;
 
             var textureAlphaSettings = m_TextureImporterSettings.ExtractTextureAlphaSettings();
             var textureMipmapSettings = m_TextureImporterSettings.ExtractTextureMipmapSettings();
@@ -379,7 +334,7 @@ namespace UnityEditor.U2D.PSD
             return GetUniqueName(name, namehash);
         }
 
-        void ImportFromLayers(AssetImportContext ctx, Document doc)
+        void ImportFromLayers(Document doc)
         {
             NativeArray<Color32> output = default(NativeArray<Color32>);
 
@@ -523,15 +478,15 @@ namespace UnityEditor.U2D.PSD
                 oldPsdLayers.AddRange(psdLayers);
                 m_ImportedTextureHeight = textureActualHeight = height;
                 m_ImportedTextureWidth = textureActualWidth = width;
-                var generatedTexture = ImportTexture(ctx, output, width, height, 0, spriteImportData.Count);
+                var generatedTexture = ImportTexture(output, width, height, 0, spriteImportData.Count);
                 
                 if (generatedTexture.texture)
                 {
                     m_ImportedTextureHeight = generatedTexture.texture.height;
                     m_ImportedTextureWidth = generatedTexture.texture.width;
                 }
-
-                RegisterAssets(ctx, generatedTexture);
+                
+                RegisterAssets(generatedTexture);
             }
             finally
             {
@@ -570,66 +525,123 @@ namespace UnityEditor.U2D.PSD
             return platformSettings;
         }
 
-        void RegisterAssets(AssetImportContext ctx, TextureGenerationOutput output)
-        {
-            List<int> assetNameHash = new List<int>();
-            if (!string.IsNullOrEmpty(output.importInspectorWarnings))
-            {
-                Debug.LogWarning(output.importInspectorWarnings);
+        void RegisterAssets(TextureGenerationOutput output) {
+            // List<int> assetNameHash = new List<int>();
+            // if (!string.IsNullOrEmpty(output.importInspectorWarnings))
+            // {
+            //     Debug.LogWarning(output.importInspectorWarnings);
+            // }
+            // if (output.importWarnings != null && output.importWarnings.Length != 0)
+            // {
+            //     foreach (var warning in output.importWarnings)
+            //         Debug.LogWarning(warning);
+            // }
+            // if (output.thumbNail == null)
+            //     Debug.LogWarning("Thumbnail generation fail");
+            // if (output.texture == null)
+            // {
+            //     throw new Exception("Texture import fail");
+            // }
+            //
+            // var assetName = GetUniqueName(System.IO.Path.GetFileNameWithoutExtension(ctx.assetPath), assetNameHash, true);
+            // // Setup all fixed name on the hash table
+            // if (string.IsNullOrEmpty(m_TextureAssetName))
+            //     m_TextureAssetName = GetUniqueName(string.Format("{0} Texture",assetName), assetNameHash, true);
+            // if (string.IsNullOrEmpty(m_PrefabAssetName))
+            //     m_PrefabAssetName = GetUniqueName(string.Format("{0} Prefab", assetName), assetNameHash, true);
+            // if (string.IsNullOrEmpty(m_SpriteLibAssetName))
+            //     m_SpriteLibAssetName = GetUniqueName(string.Format("{0} Sprite Lib", assetName), assetNameHash, true);
+            //
+            // output.texture.name = assetName;
+            // ctx.AddObjectToAsset(m_TextureAssetName, output.texture, output.thumbNail);
+            // UnityEngine.Object mainAsset = output.texture;
+            //
+            //
+            // if (output.sprites != null)
+            // {
+            //     var slAsset = ProduceSpriteLibAsset(output.sprites);
+            //
+            //     if (shouldProduceGameObject)
+            //     {
+            //         GameObject prefab = OnProducePrefab(m_TextureAssetName, output.sprites, slAsset);
+            //         if (prefab != null)
+            //         {
+            //             ctx.AddObjectToAsset(m_PrefabAssetName, prefab);
+            //             mainAsset = prefab;
+            //         }
+            //     }
+            //
+            //     foreach (var s in output.sprites)
+            //     {
+            //         var spriteAssetName = GetUniqueName(s.GetSpriteID().ToString(), assetNameHash, false, s);
+            //         ctx.AddObjectToAsset(spriteAssetName, s);
+            //     }
+            //
+            //     if (slAsset != null)
+            //     {
+            //         slAsset.name = assetName;
+            //         ctx.AddObjectToAsset(m_SpriteLibAssetName, slAsset);
+            //     }
+            // }
+            // ctx.SetMainObject(mainAsset);
+
+            // Create atlas
+            var newSprites = TextureUtils.CreateAtlas(output.sprites, 2048, _texturePath, 100f);
+            
+            // Create prefab
+            CreateGameObject(_gameObjectName, newSprites);
+        }
+
+        private void CreateGameObject(string name, Dictionary<GUID, Sprite> newSprites) {
+            if (newSprites == null || newSprites.Count == 0) return;
+            
+            var spriteImportData = GetSpriteImportData();
+            GameObject root = new GameObject {
+                name = name
+            };
+
+            var rectTransform = root.AddComponent<RectTransform>();
+
+            var canvas = root.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+
+            var canvasScaler = root.AddComponent<CanvasScaler>();
+            canvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvasScaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            canvasScaler.referenceResolution = new Vector2(2436, 1125);
+            root.AddComponent<CanvasGroup>();
+
+            var psdLayers = GetPSDLayers();
+            for (var i = 0; i < psdLayers.Count; i++) {
+                BuildGroupGameObject(psdLayers, i, root.transform);
             }
-            if (output.importWarnings != null && output.importWarnings.Length != 0)
-            {
-                foreach (var warning in output.importWarnings)
-                    Debug.LogWarning(warning);
-            }
-            if (output.thumbNail == null)
-                Debug.LogWarning("Thumbnail generation fail");
-            if (output.texture == null)
-            {
-                throw new Exception("Texture import fail");
-            }
+            
+            for (var i = 0; i < psdLayers.Count; ++i) {
+                var l = psdLayers[i];
+                if (l.gameObject == null) continue;
 
-            var assetName = GetUniqueName(System.IO.Path.GetFileNameWithoutExtension(ctx.assetPath), assetNameHash, true);
-            // Setup all fixed name on the hash table
-            if (string.IsNullOrEmpty(m_TextureAssetName))
-                m_TextureAssetName = GetUniqueName(string.Format("{0} Texture",assetName), assetNameHash, true);
-            if (string.IsNullOrEmpty(m_PrefabAssetName))
-                m_PrefabAssetName = GetUniqueName(string.Format("{0} Prefab", assetName), assetNameHash, true);
-            if (string.IsNullOrEmpty(m_SpriteLibAssetName))
-                m_SpriteLibAssetName = GetUniqueName(string.Format("{0} Sprite Lib", assetName), assetNameHash, true);
-
-            output.texture.name = assetName;
-            ctx.AddObjectToAsset(m_TextureAssetName, output.texture, output.thumbNail);
-            UnityEngine.Object mainAsset = output.texture;
-
-
-            if (output.sprites != null)
-            {
-                var slAsset = ProduceSpriteLibAsset(output.sprites);
-
-                if (shouldProduceGameObject)
-                {
-                    GameObject prefab = OnProducePrefab(m_TextureAssetName, output.sprites, slAsset);
-                    if (prefab != null)
-                    {
-                        ctx.AddObjectToAsset(m_PrefabAssetName, prefab);
-                        mainAsset = prefab;
-                    }
+                var go = l.gameObject;
+                go.AddComponent<RectTransform>();
+                
+                var layerSpriteID = l.spriteID;
+                var exist = newSprites.TryGetValue(layerSpriteID, out var sprite);
+                var spriteMetaData = spriteImportData.FirstOrDefault(x => x.spriteID == layerSpriteID);
+                if (exist && spriteMetaData != null) {
+                    var uvTransform = spriteMetaData.uvTransform;
+                    var outlineOffset = new Vector2(
+                        spriteMetaData.rect.x - uvTransform.x + (spriteMetaData.pivot.x * spriteMetaData.rect.width),
+                        spriteMetaData.rect.y - uvTransform.y + (spriteMetaData.pivot.y * spriteMetaData.rect.height)) * definitionScale / sprite.pixelsPerUnit;
+            
+                    var pos = new Vector3(outlineOffset.x, outlineOffset.y, 0);
+                    pos = new Vector3(pos.x * sprite.pixelsPerUnit - rectTransform.sizeDelta.x / 2, pos.y * sprite.pixelsPerUnit - rectTransform.sizeDelta.y / 2, 0);
+            
+                    go.transform.position = pos;
+            
+                    var image = go.AddComponent<Image>();
+                    image.sprite = sprite;
+                    image.SetNativeSize();
                 }
-
-                foreach (var s in output.sprites)
-                {
-                    var spriteAssetName = GetUniqueName(s.GetSpriteID().ToString(), assetNameHash, false, s);
-                    ctx.AddObjectToAsset(spriteAssetName, s);
-                }
-
-                if (slAsset != null)
-                {
-                    slAsset.name = assetName;
-                    ctx.AddObjectToAsset(m_SpriteLibAssetName, slAsset);
-                }
             }
-            ctx.SetMainObject(mainAsset);
         }
 
         bool SpriteIsMainFromSpriteLib(string spriteId, out string categoryName)
@@ -652,28 +664,28 @@ namespace UnityEditor.U2D.PSD
             return true;
         }
 
-        void BuildGroupGameObject(List<PSDLayer> psdGroup, int index, Transform root)
-        {
-            var spriteData = GetSpriteImportData().FirstOrDefault(x => x.spriteID == psdGroup[index].spriteID);
-            if (psdGroup[index].gameObject == null)
-            {
-                if (m_GenerateGOHierarchy || (!psdGroup[index].spriteID.Empty() && psdGroup[index].isGroup == false))
-                {
+        void BuildGroupGameObject(List<PSDLayer> psdGroup, int index, Transform root) {
+            var layer = psdGroup[index];
+            var spriteData = GetSpriteImportData().FirstOrDefault(x => x.spriteID == layer.spriteID);
+            
+            if (layer.gameObject == null) {
+                if (m_GenerateGOHierarchy || (!layer.spriteID.Empty() && layer.isGroup == false)) {
                     // Determine if need to create GameObject i.e. if the sprite is not in a SpriteLib or if it is the first one
                     string categoryName;
-                    var b = SpriteIsMainFromSpriteLib(psdGroup[index].spriteID.ToString(), out categoryName);
-                    string goName = string.IsNullOrEmpty(categoryName) ? spriteData  != null ? spriteData.name : psdGroup[index].name : categoryName;
+                    var b = SpriteIsMainFromSpriteLib(layer.spriteID.ToString(), out categoryName);
+                    var goName = string.IsNullOrEmpty(categoryName) ? spriteData  != null ? spriteData.name : layer.name : categoryName;
                     if (b)
-                        psdGroup[index].gameObject = m_GameObjectFactory.CreateGameObject(goName);
+                        layer.gameObject = m_GameObjectFactory.CreateGameObject(goName);
                 }
-                if (psdGroup[index].parentIndex >= 0 && m_GenerateGOHierarchy)
-                {
-                    BuildGroupGameObject(psdGroup, psdGroup[index].parentIndex, root);
-                    root = psdGroup[psdGroup[index].parentIndex].gameObject.transform;
+                if (layer.parentIndex >= 0 && m_GenerateGOHierarchy) {
+                    BuildGroupGameObject(psdGroup, layer.parentIndex, root);
+                    root = psdGroup[layer.parentIndex].gameObject.transform;
                 }
 
-                if (psdGroup[index].gameObject != null)
-                    psdGroup[index].gameObject.transform.SetParent(root);
+                if (layer.gameObject != null) {
+                    layer.gameObject.transform.SetParent(root);
+                    layer.gameObject.transform.SetAsFirstSibling();
+                }
             }
         }
 
@@ -928,8 +940,6 @@ namespace UnityEditor.U2D.PSD
             }
         }
 
-        SpriteImportMode ISpriteEditorDataProvider.spriteImportMode => spriteImportMode;
-
         internal int spriteDataCount
         {
             get
@@ -943,44 +953,14 @@ namespace UnityEditor.U2D.PSD
             }
         }
 
-        internal UnityEngine.Object targetObject
-        {
-            get { return this; }
-        }
-        UnityEngine.Object ISpriteEditorDataProvider.targetObject => targetObject;
-
         internal float pixelsPerUnit
         {
             get { return m_TextureImporterSettings.spritePixelsPerUnit; }
         }
 
-        float ISpriteEditorDataProvider.pixelsPerUnit =>pixelsPerUnit;
-
         internal T GetDataProvider<T>() where T : class
         {
-            if (typeof(T) == typeof(ISpriteOutlineDataProvider))
-            {
-                return new SpriteOutlineDataProvider { dataProvider = this } as T;
-            }
-            if (typeof(T) == typeof(ITextureDataProvider))
-            {
-                return new TextureDataProvider { dataProvider = this } as T;
-            }
-            if (typeof(T) == typeof(ISpriteLibDataProvider))
-            {
-                return new SpriteLibraryDataProvider() { dataProvider = this } as T;
-            }
-            if (typeof(T) == typeof(ISecondaryTextureDataProvider))
-            {
-                return new SecondaryTextureDataProvider() { dataProvider = this } as T;
-            }
-            else
-                return this as T;
-        }
-
-        T ISpriteEditorDataProvider.GetDataProvider<T>()
-        {
-            return GetDataProvider<T>();
+            return this as T;
         }
 
         internal bool HasDataProvider(Type type)
@@ -997,11 +977,6 @@ namespace UnityEditor.U2D.PSD
             }
             else
                 return type.IsAssignableFrom(GetType());
-        }
-
-        bool ISpriteEditorDataProvider.HasDataProvider(Type type)
-        {
-            return HasDataProvider(type);
         }
 
         internal void AddSpriteData(SpriteRect spriteRect)
@@ -1046,34 +1021,16 @@ namespace UnityEditor.U2D.PSD
 
         internal void Apply()
         {
-            // Do this so that asset change save dialog will not show
-            var originalValue = EditorPrefs.GetBool("VerifySavingAssets", false);
-            EditorPrefs.SetBool("VerifySavingAssets", false);
-            AssetDatabase.ForceReserializeAssets(new string[] { assetPath }, ForceReserializeAssetsOptions.ReserializeMetadata);
-            EditorPrefs.SetBool("VerifySavingAssets", originalValue);
-        }
-
-        void ISpriteEditorDataProvider.Apply()
-        {
-            Apply();
+            
         }
 
         internal void InitSpriteEditorDataProvider() {}
-        void ISpriteEditorDataProvider.InitSpriteEditorDataProvider()
-        {
-            InitSpriteEditorDataProvider();
-        } 
 
         internal SpriteRect[] GetSpriteRects()
         {
             var spriteImportData = GetSpriteImportData();
             var skip = mosaicMode ? 0 : 1;
             return spriteImportMode == SpriteImportMode.Multiple ? spriteImportData.Skip(skip).Select(x => new SpriteMetaData(x) as SpriteRect).ToArray() : new[] {new SpriteMetaData(spriteImportData[0]) };
-        }
-
-        SpriteRect[] ISpriteEditorDataProvider.GetSpriteRects()
-        {
-            return GetSpriteRects();
         }
 
         List<SpriteMetaData> GetSpriteImportData()
@@ -1150,20 +1107,9 @@ namespace UnityEditor.U2D.PSD
             }
         }
 
-        void ISpriteEditorDataProvider.SetSpriteRects(SpriteRect[] spriteRects)
-        {
-            SetSpriteRects(spriteRects);
-        }
-
         bool mosaicMode
         {
             get { return spriteImportMode == SpriteImportMode.Multiple && m_MosaicLayers; }
-        }
-
-        internal CharacterData characterData
-        {
-            get { return m_CharacterData; }
-            set { m_CharacterData = value; }
         }
 
         internal Vector2Int documentSize
