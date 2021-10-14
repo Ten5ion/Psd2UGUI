@@ -14,6 +14,7 @@ using UnityEngine.Experimental.U2D.Animation;
 using UnityEngine.U2D;
 using UnityEngine.U2D.Animation;
 using UnityEngine.Scripting.APIUpdating;
+using UnityEngine.UI;
 
 namespace UnityEditor.U2D.PSD
 {
@@ -136,9 +137,6 @@ namespace UnityEditor.U2D.PSD
         int m_ImportedTextureHeight;
         [SerializeField]
         Vector2Int m_DocumentSize;
-
-        [SerializeField]
-        bool m_PaperDollMode = false;
 
         [SerializeField]
         bool m_KeepDupilcateSpriteName = false;
@@ -372,38 +370,6 @@ namespace UnityEditor.U2D.PSD
             }
             UnityEngine.Profiling.Profiler.EndSample();
             return output;
-        }
-
-        void AutoGenerateSpriteSkinData(SpriteMetaData metaData)
-        {
-            //If bone data exist but skinning data doesn't exist, auto generate them
-            if (metaData.spriteBone != null && metaData.spriteBone.Count > 0 &&
-                (metaData.vertices == null || metaData.vertices.Count == 0))
-            {
-                var spriteMeshDataController = new SpriteMeshDataController();
-                var smd = new SpriteMeshData();
-                smd.spriteID = metaData.spriteID;
-                smd.frame = metaData.rect;
-                smd.pivot = metaData.pivot;
-                smd.bones = ModuleUtility.CreateSpriteBoneData(metaData.spriteBone.ToArray(), Matrix4x4.TRS(metaData.rect.position, Quaternion.identity, Vector3.one));
-                spriteMeshDataController.spriteMeshData = smd;
-                spriteMeshDataController.OutlineFromAlpha(new OutlineGenerator(), GetDataProvider<ITextureDataProvider>(), 0.05f, 200);
-                spriteMeshDataController.Triangulate(new Triangulator());
-                spriteMeshDataController.Subdivide(new Triangulator(), 0.25f);
-                spriteMeshDataController.CalculateWeights(new BoundedBiharmonicWeightsGenerator(), null, 0.01f);
-                spriteMeshDataController.SortTrianglesByDepth();
-
-                List<Vertex2DMetaData> vmd = new List<Vertex2DMetaData>(smd.vertices.Count);
-                foreach (var v in smd.vertices)
-                    vmd.Add(new Vertex2DMetaData() { position = v.position - smd.frame.position, boneWeight = v.editableBoneWeight.ToBoneWeight(true) });
-                List<Vector2Int> emd = new List<Vector2Int>(smd.edges.Count);
-                foreach (var e in smd.edges)
-                    emd.Add(new Vector2Int(e.index1, e.index2));
-
-                metaData.vertices = vmd;
-                metaData.indices = smd.indices.ToArray();
-                metaData.edges = emd.ToArray();
-            }
         }
 
         string GetUniqueSpriteName(string name, List<int> namehash)
@@ -643,11 +609,7 @@ namespace UnityEditor.U2D.PSD
 
                 if (shouldProduceGameObject)
                 {
-                    GameObject prefab = null;
-                    if (m_PaperDollMode)
-                        prefab = OnProducePaperDollPrefab(m_TextureAssetName, output.sprites, slAsset);
-                    else
-                        prefab = OnProducePrefab(m_TextureAssetName, output.sprites, slAsset);
+                    GameObject prefab = OnProducePrefab(m_TextureAssetName, output.sprites, slAsset);
                     if (prefab != null)
                     {
                         ctx.AddObjectToAsset(m_PrefabAssetName, prefab);
@@ -725,11 +687,6 @@ namespace UnityEditor.U2D.PSD
             get { return m_ResliceFromLayer && m_MosaicLayers && spriteImportMode == SpriteImportMode.Multiple; }
         }
 
-        bool characterMode
-        {
-            get { return mosaicMode && m_CharacterMode == true; }
-        }
-
         float definitionScale
         {
             get
@@ -777,47 +734,6 @@ namespace UnityEditor.U2D.PSD
             return Vector2.zero;
         }
 
-        void CreateBoneGO(int index, SpriteBone[] bones, BoneGO[] bonesGO, Transform defaultRoot)
-        {
-            if (bonesGO[index].go != null)
-                return;
-            var bone = bones[index];
-            if (bone.parentId != -1 && bonesGO[bone.parentId].go == null)
-                CreateBoneGO(bone.parentId, bones, bonesGO, defaultRoot);
-
-            var go = m_GameObjectFactory.CreateGameObject(bone.name);
-            if (bone.parentId == -1)
-                go.transform.SetParent(defaultRoot);
-            else
-                go.transform.SetParent(bonesGO[bone.parentId].go.transform);
-            go.transform.localPosition = bone.position * 1 / pixelsPerUnit;
-            go.transform.localRotation = bone.rotation;
-            bonesGO[index] = new BoneGO()
-            {
-                go = go,
-                index = index
-            };
-        }
-
-        BoneGO[] CreateBonesGO(Transform root)
-        {
-            if (characterMode)
-            {
-                var characterSkeleton = GetDataProvider<ICharacterDataProvider>().GetCharacterData();
-                var bones = characterSkeleton.bones;
-                if (bones != null)
-                {
-                    var boneGOs = new BoneGO[bones.Length];
-                    for (int i = 0; i < bones.Length; ++i)
-                    {
-                        CreateBoneGO(i, bones, boneGOs, root);
-                    }
-                    return boneGOs;
-                }
-            }
-            return new BoneGO[0];
-        }
-
         void GetSpriteLiblabel(string spriteId, out string category, out string label)
         {
             category = "";
@@ -833,61 +749,6 @@ namespace UnityEditor.U2D.PSD
                     break;
                 }
             }
-        }
-
-        GameObject OnProducePaperDollPrefab(string assetname, Sprite[] sprites, SpriteLibraryAsset spriteLib)
-        {
-            GameObject root = null;
-            CharacterData? characterSkeleton = characterMode ? new CharacterData ? (GetDataProvider<ICharacterDataProvider>().GetCharacterData()) : null;
-            if (sprites != null && sprites.Length > 0)
-            {
-                root = new GameObject();
-                root.name = assetname + "_GO";
-                var spriteImportData = GetSpriteImportData();
-                var psdLayers = GetPSDLayers();
-                var boneGOs = CreateBonesGO(root.transform);
-                if (spriteLib != null)
-                    root.AddComponent<SpriteLibrary>().spriteLibraryAsset = spriteLib;
-                for (int i = 0; i < sprites.Length; ++i)
-                {
-                    string categoryName;
-                    if (SpriteIsMainFromSpriteLib(sprites[i].GetSpriteID().ToString(), out categoryName))
-                    {
-                        var spriteBones = m_CharacterData.parts.FirstOrDefault(x => new GUID(x.spriteId) == sprites[i].GetSpriteID()).bones;
-                        var rootBone = root;
-                        if (spriteBones != null && spriteBones.Any())
-                        {
-                            var b = spriteBones.Where(x => x >= 0 && x < boneGOs.Length).Select(x => boneGOs[x]).OrderBy(x => x.index);
-                            if (b.Any())
-                                rootBone = b.First().go;
-                        }
-
-                        var srGameObject = m_GameObjectFactory.CreateGameObject(string.IsNullOrEmpty(categoryName) ? sprites[i].name : categoryName);
-                        var sr = srGameObject.AddComponent<SpriteRenderer>();
-                        sr.sprite = sprites[i];
-                        sr.sortingOrder = psdLayers.Count - psdLayers.FindIndex(x => x.spriteID == sprites[i].GetSpriteID());
-                        srGameObject.transform.parent = rootBone.transform;
-                        var spriteMetaData = spriteImportData.FirstOrDefault(x => x.spriteID == sprites[i].GetSpriteID());
-                        if (spriteMetaData != null)
-                        {
-                            var uvTransform = spriteMetaData.uvTransform;
-                            var outlineOffset = new Vector2(spriteMetaData.rect.x - uvTransform.x + (spriteMetaData.pivot.x * spriteMetaData.rect.width),
-                                spriteMetaData.rect.y - uvTransform.y + (spriteMetaData.pivot.y * spriteMetaData.rect.height)) * definitionScale / sprites[i].pixelsPerUnit;
-                            srGameObject.transform.position = new Vector3(outlineOffset.x, outlineOffset.y, 0);
-                        }
-                        var category = "";
-                        var labelName = "";
-                        GetSpriteLiblabel(sprites[i].GetSpriteID().ToString(), out category, out labelName);
-                        if (!string.IsNullOrEmpty(category) && !string.IsNullOrEmpty(labelName))
-                        {
-                            var sresolver = srGameObject.AddComponent<SpriteResolver>();
-                            sresolver.SetCategoryAndLabel(category, labelName);
-                            sresolver.ResolveSpriteToSpriteRenderer();
-                        }
-                    }
-                }
-            }
-            return root;
         }
 
         internal void SetPlatformTextureSettings(TextureImporterPlatformSettings platformSettings)
@@ -907,21 +768,29 @@ namespace UnityEditor.U2D.PSD
         GameObject OnProducePrefab(string assetname, Sprite[] sprites, SpriteLibraryAsset spriteLib)
         {
             GameObject root = null;
-            CharacterData? characterSkeleton = characterMode ? new CharacterData ? (GetDataProvider<ICharacterDataProvider>().GetCharacterData()) : null;
             if (sprites != null && sprites.Length > 0)
             {
                 var spriteImportData = GetSpriteImportData();
                 root = new GameObject();
                 root.name = assetname + "_GO";
-                if (spriteLib != null)
-                    root.AddComponent<SpriteLibrary>().spriteLibraryAsset = spriteLib;
+                
+                var rectTransform = root.AddComponent<RectTransform>();
+
+                var canvas = root.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+
+                var canvasScaler = root.AddComponent<CanvasScaler>();
+                canvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                canvasScaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+                canvasScaler.referenceResolution = new Vector2(2436, 1125);
+                root.AddComponent<CanvasGroup>();
 
                 var psdLayers = GetPSDLayers();
                 for (int i = 0; i < psdLayers.Count; ++i)
                 {
                     BuildGroupGameObject(psdLayers, i, root.transform);
                 }
-                var boneGOs = CreateBonesGO(root.transform);
+                
                 for (int i = 0; i < psdLayers.Count; ++i)
                 {
                     var l = psdLayers[i];
@@ -930,70 +799,25 @@ namespace UnityEditor.U2D.PSD
                     var spriteMetaData = spriteImportData.FirstOrDefault(x => x.spriteID == layerSpriteID);
                     if (sprite != null && spriteMetaData != null && l.gameObject != null)
                     {
-                        var spriteRenderer = l.gameObject.AddComponent<SpriteRenderer>();
-                        spriteRenderer.sprite = sprite;
-                        spriteRenderer.sortingOrder = psdLayers.Count - i;
                         var uvTransform = spriteMetaData.uvTransform;
                         var outlineOffset = new Vector2(spriteMetaData.rect.x - uvTransform.x + (spriteMetaData.pivot.x * spriteMetaData.rect.width),
                             spriteMetaData.rect.y - uvTransform.y + (spriteMetaData.pivot.y * spriteMetaData.rect.height)) * definitionScale / sprite.pixelsPerUnit;
-                        l.gameObject.transform.position = new Vector3(outlineOffset.x, outlineOffset.y, 0);
-
-                        if (characterSkeleton != null)
-                        {
-                            var part = characterSkeleton.Value.parts.FirstOrDefault(x => x.spriteId == spriteMetaData.spriteID.ToString());
-                            if (part.bones != null && part.bones.Length > 0)
-                            {
-                                var spriteSkin = l.gameObject.AddComponent<SpriteSkin>();
-                                if (spriteRenderer.sprite != null && spriteRenderer.sprite.GetBindPoses().Length > 0)
-                                {
-                                    var spriteBones = m_CharacterData.parts.FirstOrDefault(x => new GUID(x.spriteId) == spriteRenderer.sprite.GetSpriteID()).bones.Where(x => x >= 0 && x < boneGOs.Length).Select(x => boneGOs[x]);
-                                    if (spriteBones.Any())
-                                    {
-                                        spriteSkin.rootBone = spriteBones.OrderBy(x => x.index).First().go.transform;
-                                        spriteSkin.boneTransforms = spriteBones.Select(x => x.go.transform).ToArray();
-                                        if (spriteSkin.isValid)
-                                            spriteSkin.CalculateBounds();
-                                    }
-                                }
-                            }
-                        }
-
-                        var category = "";
-                        var labelName = "";
-                        GetSpriteLiblabel(layerSpriteID.ToString(), out category, out labelName);
-                        if (!string.IsNullOrEmpty(category) && !string.IsNullOrEmpty(labelName))
-                        {
-                            var sresolver = l.gameObject.AddComponent<SpriteResolver>();
-                            sresolver.SetCategoryAndLabel(category, labelName);
-                            sresolver.ResolveSpriteToSpriteRenderer();
-                        }
+                
+                        Vector3 pos = new Vector3(outlineOffset.x, outlineOffset.y, 0);
+                        pos = new Vector3(pos.x * sprite.pixelsPerUnit - rectTransform.sizeDelta.x / 2, pos.y * sprite.pixelsPerUnit - rectTransform.sizeDelta.y / 2, 0);
+                
+                        l.gameObject.transform.position = pos;
+                
+                        var image = l.gameObject.AddComponent<Image>();
+                        image.sprite = sprite;
+                        image.SetNativeSize();
                     }
-                }
-
-                var prefabBounds = new Rect(0 , 0, m_DocumentSize.x / pixelsPerUnit, m_DocumentSize.y / pixelsPerUnit);
-                var documentPivot = (Vector3)GetPivotPoint(prefabBounds, m_DocumentAlignment);
-                for (int i = 0; i < psdLayers.Count; ++i)
-                {
-                    var l = psdLayers[i];
-                    if (l.gameObject == null || l.gameObject.GetComponent<SpriteRenderer>() == null)
-                        continue;
-                    var p = l.gameObject.transform.localPosition;
-                    p -= documentPivot;
-                    l.gameObject.transform.localPosition = p;
-                }
-                for (int i = 0; i < boneGOs.Length; ++i)
-                {
-                    if (boneGOs[i].go.transform.parent != root.transform)
-                        continue;
-                    var p = boneGOs[i].go.transform.position;
-                    p -= documentPivot;
-                    boneGOs[i].go.transform.position = p;
                 }
             }
 
             return root;
         }
-
+        
         Bounds? GetBoundingBox(GameObject root)
         {
             Bounds? prefabBounds1 = null;
@@ -1134,29 +958,13 @@ namespace UnityEditor.U2D.PSD
 
         internal T GetDataProvider<T>() where T : class
         {
-            if (typeof(T) == typeof(ISpriteBoneDataProvider))
-            {
-                return new SpriteBoneDataProvider { dataProvider = this } as T;
-            }
-            if (typeof(T) == typeof(ISpriteMeshDataProvider))
-            {
-                return new SpriteMeshDataProvider { dataProvider = this } as T;
-            }
             if (typeof(T) == typeof(ISpriteOutlineDataProvider))
             {
                 return new SpriteOutlineDataProvider { dataProvider = this } as T;
             }
-            if (typeof(T) == typeof(ISpritePhysicsOutlineDataProvider))
-            {
-                return new SpritePhysicsOutlineProvider { dataProvider = this } as T;
-            }
             if (typeof(T) == typeof(ITextureDataProvider))
             {
                 return new TextureDataProvider { dataProvider = this } as T;
-            }
-            if (typeof(T) == typeof(ICharacterDataProvider))
-            {
-                return characterMode ? new CharacterDataProvider { dataProvider = this } as T : null;
             }
             if (typeof(T) == typeof(ISpriteLibDataProvider))
             {
@@ -1177,8 +985,6 @@ namespace UnityEditor.U2D.PSD
 
         internal bool HasDataProvider(Type type)
         {
-            if (characterMode && type == typeof(ICharacterDataProvider))
-                return true;
             if (type == typeof(ISpriteBoneDataProvider) ||
                 type == typeof(ISpriteMeshDataProvider) ||
                 type == typeof(ISpriteOutlineDataProvider) ||
@@ -1272,12 +1078,12 @@ namespace UnityEditor.U2D.PSD
 
         List<SpriteMetaData> GetSpriteImportData()
         {
-            return mosaicMode ? (characterMode ? m_RigSpriteImportData : m_MosaicSpriteImportData) : m_SpriteImportData;
+            return mosaicMode ? m_MosaicSpriteImportData : m_SpriteImportData;
         }
 
         internal List<PSDLayer> GetPSDLayers()
         {
-            return mosaicMode ? (characterMode ? m_RigPSDLayers : m_MosaicPSDLayers) : null;
+            return mosaicMode ? m_MosaicPSDLayers : null;
         }
 
         internal SpriteMetaData[] GetSpriteMetaData()
@@ -1367,7 +1173,7 @@ namespace UnityEditor.U2D.PSD
 
         SpriteLibraryAsset ProduceSpriteLibAsset(Sprite[] sprites)
         {
-            if (!characterMode || m_SpriteCategoryList.categories == null)
+            if (true || m_SpriteCategoryList.categories == null)
                 return null;
             var sla = ScriptableObject.CreateInstance<SpriteLibraryAsset>();
             sla.name = "Sprite Lib";
