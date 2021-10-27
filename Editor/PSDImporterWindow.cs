@@ -30,14 +30,14 @@ namespace UnityEditor.U2D.PSD
 
         private Vector2 _previewSize = new Vector2();
 
-        private const float PreviewSize = 450f;
+        private const float PreviewSize = 750f;
         
         private Vector2 _scrollPos;
 
         [MenuItem ("Tools/PSDImporter")]
         public static void ShowWindow() {
             var window = EditorWindow.GetWindow<PSDImporterWindow>();
-            window.minSize = new Vector2(900, 625);
+            window.minSize = new Vector2(900, 750);
             window.titleContent = new GUIContent("PSDImporter");
 
             if (window._psdImporter == null) {
@@ -66,7 +66,7 @@ namespace UnityEditor.U2D.PSD
         }
 
         private void OnGUI() {
-            if (GUILayout.Button("Load PSD")) {
+            if (GUILayout.Button("Open a PSD File", GUILayout.Width(130), GUILayout.Height(30))) {
                 _psdPath = EditorUtility.OpenFilePanel("Import PSD", "", "psd");
                 _exportName = null;
                 _foldStates.Clear();
@@ -85,12 +85,12 @@ namespace UnityEditor.U2D.PSD
             
             if (string.IsNullOrEmpty(_psdPath)) return;
 
-            _exportRoot = EditorGUILayout.TextField("Export To", _exportRoot);
+            _exportRoot = EditorGUILayout.TextField("Output Directory", _exportRoot);
 
             if (string.IsNullOrEmpty(_exportName)) {
                 _exportName = Path.GetFileNameWithoutExtension(_psdPath);
             }
-            _exportName = EditorGUILayout.TextField("Export Name", _exportName);
+            _exportName = EditorGUILayout.TextField("Output Name", _exportName);
 
             _createAtlas = EditorGUILayout.Toggle("Create Atlas", _createAtlas);
 
@@ -106,7 +106,7 @@ namespace UnityEditor.U2D.PSD
                 
                 EditorGUILayout.BeginVertical(GUILayout.Width(PreviewSize));
                 {
-                    if (GUILayout.Button("Convert To Prefab", GUILayout.Width(130), GUILayout.Height(30))) {
+                    if (GUILayout.Button("Export", GUILayout.Width(130), GUILayout.Height(30))) {
                         _psdImporter.ImportPsd(_exportRoot, _exportName, _createAtlas);
                     }
                 }
