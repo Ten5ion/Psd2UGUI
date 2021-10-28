@@ -21,11 +21,13 @@ namespace UnityEditor.U2D.PSD
         int m_LayerID;
         [SerializeField]
         Vector2Int m_MosaicPosition;
+        [SerializeField]
+        int m_Opacity;
 
         [NonSerialized]
         GameObject m_GameObject;
 
-        public PSDLayer(NativeArray<Color32> tex, int parent, bool group, string layerName, int width, int height, int id)
+        public PSDLayer(NativeArray<Color32> tex, int parent, bool group, string layerName, int width, int height, int id, int alpha)
         {
             isGroup = group;
             parentIndex = parent;
@@ -34,9 +36,12 @@ namespace UnityEditor.U2D.PSD
             this.width = width;
             this.height = height;
             layerID = id;
+            opacity = alpha;
         }
 
         public int layerID { get { return m_LayerID; } private set { m_LayerID = value; } }
+        
+        public int opacity { get { return m_Opacity; } private set { m_Opacity = value; } }
 
         public string name { get { return m_Name; } private set { m_Name = value; } }
         public string spriteName { get { return m_SpriteName; } set { m_SpriteName = value; } }

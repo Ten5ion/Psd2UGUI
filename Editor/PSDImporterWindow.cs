@@ -142,6 +142,21 @@ namespace UnityEditor.U2D.PSD
                 
                 var texture = new Texture2D(document.width, document.height);
                 texture.SetPixels32(psdLayer.texture.ToArray());
+
+                if (_bitmapLayerMap.TryGetValue(psdLayer.layerID, out var bitmapLayer)) {
+                    var opacity = Convert.ToInt32(bitmapLayer.Opacity);
+                    if (opacity < 255) {
+                        var alpha = opacity / 255f;
+                        for (var i = 0; i < texture.width; i++) {
+                            for (var j = 0; j < texture.height; j++) {
+                                var pixel = texture.GetPixel(i, j);
+                                pixel.a *= alpha;
+                                texture.SetPixel(i, j, pixel);
+                            }
+                        }
+                    }
+                }
+                
                 texture.Apply();
                 
                 _layerTextures.Add(psdLayer.layerID, texture);

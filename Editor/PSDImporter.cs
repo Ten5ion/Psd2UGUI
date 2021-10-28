@@ -480,6 +480,11 @@ namespace UnityEditor.U2D.PSD
                     var image = go.AddComponent<Image>();
                     image.sprite = sprite;
                     image.raycastTarget = false;
+                    
+                    var color = image.color;
+                    color.a *= l.opacity / 255f;
+                    image.color = color;
+                    
                     image.SetNativeSize();
                 }
             }

@@ -88,12 +88,12 @@ namespace UnityEditor.U2D.PSD
                     continue;
                 if (l.IsGroup)
                 {
-                    extractedLayer.Add(new PSDLayer(new NativeArray<Color32>(0, Allocator.Persistent), parentGroupIndex, l.IsGroup, l.Name, 0, 0, l.LayerID));
+                    extractedLayer.Add(new PSDLayer(new NativeArray<Color32>(0, Allocator.Persistent), parentGroupIndex, l.IsGroup, l.Name, 0, 0, l.LayerID, l.Opacity));
                     actualLayerWithBuffer += ExtractLayer(extractedLayer, l.ChildLayer, importHiddenLayer);
                 }
                 else
                 {
-                    extractedLayer.Add(new PSDLayer(l.Surface.color, parentGroupIndex, l.IsGroup, l.Name, l.Surface.width, l.Surface.height, l.LayerID));
+                    extractedLayer.Add(new PSDLayer(l.Surface.color, parentGroupIndex, l.IsGroup, l.Name, l.Surface.width, l.Surface.height, l.LayerID, l.Opacity));
                     ++actualLayerWithBuffer;
                 }
             }
