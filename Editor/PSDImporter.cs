@@ -501,17 +501,25 @@ namespace UnityEditor.U2D.PSD
         }
 
         private void SetupBlend(LayerBlendMode blendMode, Image image) {
-            string matPath = null;
+            
+            string matFile = null;
             switch (blendMode) {
-                case LayerBlendMode.Additive: matPath = "Assets/Resources/PsdUGUIShader/PsdBlendAdditive.mat"; break;
-                case LayerBlendMode.Darken: matPath = "Assets/Resources/PsdUGUIShader/PsdBlendDarken.mat"; break;
-                case LayerBlendMode.Lighten: matPath = "Assets/Resources/PsdUGUIShader/PsdBlendLighten.mat"; break;
-                case LayerBlendMode.Multiply: matPath = "Assets/Resources/PsdUGUIShader/PsdBlendMultiply.mat"; break;
-                case LayerBlendMode.Screen: matPath = "Assets/Resources/PsdUGUIShader/PsdBlendScreen.mat"; break;
+                case LayerBlendMode.Additive: matFile = "PsdBlendAdditive.mat"; break;
+                case LayerBlendMode.Darken: matFile = "PsdBlendDarken.mat"; break;
+                case LayerBlendMode.Lighten: matFile = "PsdBlendLighten.mat"; break;
+                case LayerBlendMode.Multiply: matFile = "PsdBlendMultiply.mat"; break;
+                case LayerBlendMode.Screen: matFile = "PsdBlendScreen.mat"; break;
                 default: break;
             }
 
-            if (string.IsNullOrEmpty(matPath)) return;
+            if (string.IsNullOrEmpty(matFile)) return;
+
+            var folder = "Assets/Resources/PsdUGUIShader";
+            if (!Directory.Exists(folder)) {
+                folder = "Packages/com.he.sh.psd/Resources/PsdUGUIShader";
+            }
+
+            var matPath = Path.Combine(folder, matFile);
             
             var material = AssetDatabase.LoadAssetAtPath<Material>(matPath);
             image.material = material;
