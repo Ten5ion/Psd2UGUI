@@ -19,6 +19,7 @@ namespace UnityEditor.U2D.PSD
         private Texture2D _visibilityOnIcon;
         private Texture2D _visibilityOffIcon;
         private GUIStyle _visibilityButtonStyle;
+        private GUIStyle _normalLabelStyle;
         private GUIStyle _disableLabelStyle;
         private GUIStyle _disableFoldoutStyle;
 
@@ -31,6 +32,9 @@ namespace UnityEditor.U2D.PSD
         private Vector2 _previewSize = new Vector2();
 
         private const float PreviewSize = 750f;
+
+        private const string Subtitle_Blend = "<b><color=#00de6dff>Blend: </color></b>";
+        private const string Subtitle_Opacity = "<b><color=#ffc35bff>Opacity: </color></b>";
         
         private Vector2 _scrollPos;
 
@@ -53,8 +57,14 @@ namespace UnityEditor.U2D.PSD
             _visibilityButtonStyle.contentOffset = new Vector2(_visibilityButtonStyle.contentOffset.x,
                 _visibilityButtonStyle.contentOffset.y + 2);
 
-            _disableLabelStyle = new GUIStyle("PR DisabledLabel");
-            
+            _normalLabelStyle = new GUIStyle(EditorStyles.label) {
+                richText = true
+            };
+
+            _disableLabelStyle = new GUIStyle("PR DisabledLabel") {
+                richText = true
+            };
+
             _disableFoldoutStyle = new GUIStyle(EditorStyles.foldout) {
                 normal = {
                     textColor = _disableLabelStyle.normal.textColor
@@ -238,7 +248,7 @@ namespace UnityEditor.U2D.PSD
             EditorGUILayout.EndScrollView();
         }
 
-        private void DrawLayerInfo(BitmapLayer layer, int indent) {
+        private void DrawLayerInfo(BitmapLayer layer, int indent, bool hideByParent = false) {
             EditorGUILayout.BeginHorizontal();
             
             GUILayout.Space(20 * indent);
@@ -249,31 +259,54 @@ namespace UnityEditor.U2D.PSD
                 UpdatePreview();
             }
             
+            var labelStyle = (layer.Visible && !hideByParent) ? _normalLabelStyle : _disableLabelStyle;
+            var showBlendMode = layer.BlendMode != LayerBlendMode.Normal;
+            
             if (layer.IsGroup) {
                 var exist = _foldStates.TryGetValue(layer, out var foldout);
                 if (!exist) {
                     foldout = false;
                 }
                 
-                var foldoutStyle = layer.Visible ? EditorStyles.foldout : _disableFoldoutStyle;
+                var foldoutStyle = (layer.Visible && !hideByParent) ? EditorStyles.foldout : _disableFoldoutStyle;
+                
                 foldout = EditorGUILayout.Foldout(foldout, layer.Name, true, foldoutStyle);
                 
                 GUILayout.FlexibleSpace();
+
+                if (showBlendMode) {
+                    GUILayout.Label($"{Subtitle_Blend}{layer.BlendMode}", labelStyle);
+                }
+
+                if (layer.Opacity < 255) {
+                    GUILayout.Label($"{Subtitle_Opacity}{(layer.Opacity/255f):P0}", labelStyle);
+                }
+                
                 EditorGUILayout.EndHorizontal();
 
                 if (foldout) {
+                    var hideChild = !layer.Visible || hideByParent;
                     for (var i = layer.ChildLayer.Count - 1; i >= 0; i--) {
                         var childLayer = layer.ChildLayer[i];
-                        DrawLayerInfo(childLayer, indent + 1);
+                        DrawLayerInfo(childLayer, indent + 1, hideChild);
                     }
                 }
 
                 _foldStates[layer] = foldout;
             }
             else {
-                GUILayout.Label(layer.Name, layer.Visible ? EditorStyles.label : _disableLabelStyle);
+                GUILayout.Label(layer.Name, labelStyle);
                 
                 GUILayout.FlexibleSpace();
+
+                if (showBlendMode) {
+                    GUILayout.Label($"{Subtitle_Blend}{layer.BlendMode}", labelStyle);
+                }
+
+                if (layer.Opacity < 255) {
+                    GUILayout.Label($"{Subtitle_Opacity}{(layer.Opacity/255f):P0}", labelStyle);
+                }
+
                 EditorGUILayout.EndHorizontal();
             }
         }

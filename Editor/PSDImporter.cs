@@ -477,6 +477,7 @@ namespace UnityEditor.U2D.PSD
             
                     go.transform.position = pos;
             
+                    // Image
                     var image = go.AddComponent<Image>();
                     image.sprite = sprite;
                     image.raycastTarget = false;
@@ -486,6 +487,9 @@ namespace UnityEditor.U2D.PSD
                     image.color = color;
                     
                     image.SetNativeSize();
+                    
+                    // Material
+                    SetupBlend(l.blendMode, image);
                 }
             }
             
@@ -494,6 +498,23 @@ namespace UnityEditor.U2D.PSD
             PrefabUtility.SaveAsPrefabAsset(root, Path.Combine(_exportRoot, $"{name}.prefab"));
             
             Object.DestroyImmediate(root);
+        }
+
+        private void SetupBlend(LayerBlendMode blendMode, Image image) {
+            string matPath = null;
+            switch (blendMode) {
+                case LayerBlendMode.Additive: matPath = "Assets/Resources/PsdUGUIShader/PsdBlendAdditive.mat"; break;
+                case LayerBlendMode.Darken: matPath = "Assets/Resources/PsdUGUIShader/PsdBlendDarken.mat"; break;
+                case LayerBlendMode.Lighten: matPath = "Assets/Resources/PsdUGUIShader/PsdBlendLighten.mat"; break;
+                case LayerBlendMode.Multiply: matPath = "Assets/Resources/PsdUGUIShader/PsdBlendMultiply.mat"; break;
+                case LayerBlendMode.Screen: matPath = "Assets/Resources/PsdUGUIShader/PsdBlendScreen.mat"; break;
+                default: break;
+            }
+
+            if (string.IsNullOrEmpty(matPath)) return;
+            
+            var material = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+            image.material = material;
         }
 
         private void OnGameObjectProcessor(GameObject root) {

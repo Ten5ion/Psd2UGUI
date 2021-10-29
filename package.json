@@ -3,7 +3,7 @@
   "displayName": "Psd2UGUI",
   "version": "0.0.1",
   "unity": "2020.3",
-  "description": "psd 文件转成 UGUI 的 prefab",
+  "description": "psd 文件导出 UGUI 的 prefab 并自动切图\n版本更新：\n0.1.5\n\t1. 支持读取PSD透明度\n\t2. 支持部分Blend（为性能考虑暂不用grabpass）\n0.1.2\n\t1. 优化编辑器布局\n0.1.0\n\t1. 初步支持PSD导入\n",
   "keywords": [
     "psd",
     "ugui",
